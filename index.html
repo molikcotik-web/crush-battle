@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Strike Mini Arena</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;color:#eee;font-family:Arial,sans-serif}
+canvas{display:block;width:100%;height:100%;background:#20241f}
+#hud{position:fixed;left:14px;top:12px;z-index:3;background:#111c;padding:10px 14px;border:1px solid #555;border-radius:8px;font-weight:bold;line-height:1.55}
+#help{position:fixed;right:14px;top:12px;z-index:3;background:#111c;padding:10px;border:1px solid #555;border-radius:8px;text-align:right;font-size:13px}
+#cross{position:fixed;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%);pointer-events:none;z-index:2}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 2px #000}
+#cross:before{width:22px;height:2px;top:10px}.#cross:after{height:22px;width:2px;left:10px}
+#msg{position:fixed;left:50%;top:70%;transform:translate(-50%,-50%);z-index:5;text-align:center;font-size:30px;font-weight:900;text-shadow:0 2px 5px #000;display:none}
+button{background:#d89424;color:#111;border:0;border-radius:7px;padding:12px 22px;font-weight:900;cursor:pointer}
+#mobile{position:fixed;bottom:14px;left:14px;right:14px;z-index:4;display:none;justify-content:space-between;pointer-events:none}
+.pad{display:grid;grid-template-columns:48px 48px 48px;grid-template-rows:48px 48px 48px;gap:4px;pointer-events:auto}
+.pad button,.fire{background:#222c;color:#fff;border:1px solid #777}
+.pad .up{grid-column:2}.pad .left{grid-column:1;grid-row:2}.pad .down{grid-column:2;grid-row:2}.pad .right{grid-column:3;grid-row:2}
+.fire{width:100px;height:100px;border-radius:50%;font-size:20px}
+@media(max-width:700px){#help{display:none}#mobile{display:flex}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">❤️ HP: <span id="hp">100</span> | 🛡️ Броня: <span id="armor">100</span><br>☠️ Вбивства: <span id="kills">0</span> | 🔫 <span id="weapon">AK-47</span><br>💰 $<span id="money">800</span></div>
+<div id="help">WASD — рух<br>Мишка — приціл<br>ЛКМ — стріляти<br>R — перезарядка</div>
+<div id="cross"></div>
+<div id="msg"></div>
+<div id="mobile">
+  <div class="pad">
+    <button class="up" data-key="w">▲</button><button class="left" data-key="a">◀</button>
+    <button class="down" data-key="s">▼</button><button class="right" data-key="d">▶</button>
+  </div>
+  <button class="fire" id="fire">FIRE</button>
+</div>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+let W,H,keys={},mouse={x:0,y:0,down:false},last=0,over=false;
+const player={x:0,y:0,r:17,hp:100,armor:100,angle:0,speed:250,ammo:30,maxAmmo:30,cool:0,reload:0,kills:0,money:800};
+const bullets=[],bots=[];
+const map={w:2400,h:1600,walls:[
+{x:300,y:220,w:650,h:50},{x:1250,y:220,w:700,h:50},{x:300,y:1330,w:650,h:50},{x:1250,y:1330,w:700,h:50},
+{x:550,y:500,w:60,h:600},{x:1790,y:500,w:60,h:600},{x:1050,y:650,w:300,h:60},{x:1050,y:890,w:300,h:60}
+]};
+function resize(){W=c.width=innerWidth*devicePixelRatio;H=c.height=innerHeight*devicePixelRatio;c.style.width=innerWidth+'px';c.style.height=innerHeight+'px';ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);W=innerWidth;H=innerHeight}
+addEventListener('resize',resize);resize();
+function reset(){player.x=1200;player.y=800;player.hp=100;player.armor=100;player.ammo=30;player.reload=0;player.kills=0;player.money=800;over=false;bullets.length=0;bots.length=0;for(let i=0;i<10;i++)spawnBot();document.getElementById('msg').style.display='none'}
+function spawnBot(){let b;do{b={x:Math.random()*2100+150,y:Math.random()*1300+150,r:16,hp:100,cd:Math.random()*1.5,dir:Math.random()*6.28}}while(Math.hypot(b.x-player.x,b.y-player.y)<450);bots.push(b)}
+function hitWall(x,y,r=0){for(const q of map.walls)if(x+r>q.x&&x-r<q.x+q.w&&y+r>q.y&&y-r<q.y+q.h)return true;return false}
+function moveEntity(o,dx,dy){let nx=o.x+dx;if(!hitWall(nx,o.y,o.r)&&nx>o.r&&nx<map.w-o.r)o.x=nx;let ny=o.y+dy;if(!hitWall(o.x,ny,o.r)&&ny>o.r&&ny<map.h-o.r)o.y=ny}
+function shoot(){if(over||player.reload>0||player.cool>0)return;if(player.ammo<=0){reload();return}player.ammo--;player.cool=.11;
+let dx=mouse.wx-player.x,dy=mouse.wy-player.y,a=Math.atan2(dy,dx)+(Math.random()-.5)*.035;
+bullets.push({x:player.x+Math.cos(a)*25,y:player.y+Math.sin(a)*25,vx:Math.cos(a)*950,vy:Math.sin(a)*950,life:1,from:'p',dmg:34});
+}
+function reload(){if(player.reload<=0&&player.ammo<player.maxAmmo)player.reload=1.2}
+function botShoot(b){let a=Math.atan2(player.y-b.y,player.x-b.x)+(Math.random()-.5)*.14;bullets.push({x:b.x,y:b.y,vx:Math.cos(a)*520,vy:Math.sin(a)*520,life:2,from:'b',dmg:12})}
+function update(dt){
+if(over)return;
+player.cool=Math.max(0,player.cool-dt);if(player.reload>0){player.reload-=dt;if(player.reload<=0)player.ammo=player.maxAmmo}
+let dx=(keys.w?1:0)-(keys.s?1:0),dy=(keys.d?1:0)-(keys.a?1:0);let l=Math.hypot(dx,dy)||1;moveEntity(player,dx/l*player.speed*dt,dy/l*player.speed*dt);
+const camX=Math.max(0,Math.min(map.w-W,player.x-W/2)),camY=Math.max(0,Math.min(map.h-H,player.y-H/2));mouse.wx=mouse.x+camX;mouse.wy=mouse.y+camY;player.angle=Math.atan2(mouse.wy-player.y,mouse.wx-player.x);
+for(const b of bots){let dx=player.x-b.x,dy=player.y-b.y,d=Math.hypot(dx,dy);if(d>260)moveEntity(b,dx/d*90*dt,dy/d*90*dt);b.cd-=dt;if(d<600&&b.cd<=0){botShoot(b);b.cd=1.0+Math.random()*1.4}}
+for(let i=bullets.length-1;i>=0;i--){let q=bullets[i];q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt;if(q.life<=0||hitWall(q.x,q.y,2)){bullets.splice(i,1);continue}
+if(q.from==='p'){for(let j=bots.length-1;j>=0;j--){let b=bots[j];if(Math.hypot(q.x-b.x,q.y-b.y)<b.r){b.hp-=q.dmg;bullets.splice(i,1);if(b.hp<=0){bots.splice(j,1);player.kills++;player.money+=300;spawnBot()}break}}}
+else if(Math.hypot(q.x-player.x,q.y-player.y)<player.r){let dmg=q.dmg;if(player.armor>0){let a=Math.min(player.armor,dmg*.6);player.armor-=a;dmg-=a}player.hp-=dmg;bullets.splice(i,1);if(player.hp<=0){player.hp=0;end(false)}}}
+}
+function end(win){over=true;const m=document.getElementById('msg');m.innerHTML=win?'🏆 ROUND WON<br><button onclick="reset()">PLAY AGAIN</button>':'💀 YOU DIED<br><button onclick="reset()">TRY AGAIN</button>';m.style.display='block'}
+function draw(){
+ctx.clearRect(0,0,W,H);const camX=Math.max(0,Math.min(map.w-W,player.x-W/2)),camY=Math.max(0,Math.min(map.h-H,player.y-H/2));
+ctx.save();ctx.translate(-camX,-camY);
+ctx.fillStyle='#77776f';ctx.fillRect(0,0,map.w,map.h);
+for(let x=0;x<map.w;x+=80)for(let y=0;y<map.h;y+=80){ctx.fillStyle=((x/80+y/80)%2?'#74746c':'#7a7a72');ctx.fillRect(x,y,78,78)}
+ctx.fillStyle='#3e403d';for(const q of map.walls){ctx.fillRect(q.x,q.y,q.w,q.h);ctx.strokeStyle='#9a9a8c';ctx.strokeRect(q.x,q.y,q.w,q.h)}
+for(const q of bullets){ctx.fillStyle=q.from==='p'?'#ffd34d':'#ff5b4d';ctx.beginPath();ctx.arc(q.x,q.y,4,0,7);ctx.fill()}
+for(const b of bots){ctx.fillStyle='#a72b24';ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,7);ctx.fill();ctx.fillStyle='#111';ctx.fillRect(b.x-16,b.y-28,32,5);ctx.fillStyle='#56d05b';ctx.fillRect(b.x-16,b.y-28,32*Math.max(0,b.hp)/100,5)}
+ctx.save();ctx.translate(player.x,player.y);ctx.rotate(player.angle);ctx.fillStyle='#263b54';ctx.beginPath();ctx.arc(0,0,player.r,0,7);ctx.fill();ctx.fillStyle='#222';ctx.fillRect(5,-4,32,8);ctx.restore();ctx.restore();
+document.getElementById('hp').textContent=Math.ceil(player.hp);document.getElementById('armor').textContent=Math.ceil(player.armor);document.getElementById('kills').textContent=player.kills;document.getElementById('money').textContent=player.money;document.getElementById('weapon').textContent=player.reload>0?'RELOADING':`AK-47 (${player.ammo}/${player.maxAmmo})`;
+}
+function loop(t){let dt=Math.min(.033,(t-last)/1000||0);last=t;update(dt);draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='r')reload()});addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+c.addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});c.addEventListener('mousedown',()=>{mouse.down=true;shoot()});addEventListener('mouseup',()=>mouse.down=false);
+setInterval(()=>{if(mouse.down)shoot()},110);
+document.querySelectorAll('[data-key]').forEach(b=>{b.ontouchstart=e=>{e.preventDefault();keys[b.dataset.key]=true};b.ontouchend=e=>{e.preventDefault();keys[b.dataset.key]=false}});
+document.getElementById('fire').ontouchstart=e=>{e.preventDefault();mouse.down=true;shoot()};document.getElementById('fire').ontouchend=()=>mouse.down=false;
+reset();
+</script>
+</body>
+</html>
